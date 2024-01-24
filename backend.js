@@ -11,13 +11,14 @@ app.use(cors());
 const storage = multer.memoryStorage(); // Store file in memory as a buffer
 const upload = multer({ storage: storage })
 
-const secret = 'jaishreeram' 
+const SECRET = 'jaishreeram' 
 
 // defining mongoose schema  ^^ 
 
 const userSchema = new mongoose.Schema({
     username : String ,
-    password : String ,
+    email : String ,
+    password : String , 
     cartproducts : [{type : mongoose.Schema.Types.ObjectId , ref :'Shopit'}] ,
     wishlist :  [{type : mongoose.Schema.Types.ObjectId , ref :'Shopit'}] ,
 })
@@ -25,7 +26,9 @@ const userSchema = new mongoose.Schema({
 
 const adminSchema = mongoose.Schema({
     username : String , 
-    password : String
+    email : String ,
+    password : String ,
+    
 })
 
 const productSchema = new mongoose.Schema({
@@ -73,25 +76,24 @@ const authenticateJwt = (req, res, next) => {
     res.json("hello")
   })
 
-  app.post('/admin/signup', (req, res) => {
-    const { username, password } = req.body;
-    function callback(admin) {
+  app.post('/admin/signup', async(req, res) => {
+    const { username, password , email } = req.body;
+    const admin = await Admin.findOne(email)
       if (admin) {
         res.status(403).json({ message: 'Admin already exists' });
       } else {
-        const obj = { username: username, password: password };
+        const obj = { username: username, password: password  , email : email};
         const newAdmin = new Admin(obj);
         newAdmin.save();
         const token = jwt.sign({ username, role: 'admin' }, SECRET, { expiresIn: '1h' });
         res.json({ message: 'Admin created successfully', token });
       }
   
-    }
-    Admin.findOne({ username }).then(callback);
+    
   });
   
   app.post('/admin/login', async (req, res) => {
-    const { username, password } = req.headers;
+    const { username, password } = req.body;
     const admin = await Admin.findOne({ username, password });
     if (admin) {
       const token = jwt.sign({ username, role: 'admin' }, SECRET, { expiresIn: '1h' });
@@ -102,26 +104,27 @@ const authenticateJwt = (req, res, next) => {
   });
   
   app.post('/users/signup', async (req, res) => {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username });
+    const { username, password  , email} = req.body;
+    const user = await User.findOne({ email });
     if (user) {
       res.status(403).json({ message: 'User already exists' });
     } else {
-      const newUser = new User({ username, password });
+      const newUser = new User({ username, password ,email});
       await newUser.save();
       const token = jwt.sign({ username, role: 'user' }, SECRET, { expiresIn: '1h' });
-      res.json({ message: 'User created successfully', token });
+      res.json({ message: 'User created successfully', token  , email });
     }
   });
   
   app.post('/users/login', async (req, res) => {
-    const { username, password } = req.headers;
+    const { username, password } = req.body;
     const user = await User.findOne({ username, password });
+    console.log(user)
     if (user) {
       const token = jwt.sign({ username, role: 'user' }, SECRET, { expiresIn: '1h' });
-      res.json({ message: 'Logged in successfully', token });
+      res.json({ message: 'Logged in successfully', token ,  email : user.email });
     } else {
-      res.status(403).json({ message: 'Invalid username or password' });
+      res.status(403).json({ message: 'Invalid username or password'  });
     }
   });
 
