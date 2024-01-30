@@ -6,7 +6,7 @@ const multer = require('multer');
 const app = express()
 
 app.use(express.json()) ; 
-app.use(cors());
+app.use(cors()); 
 
 const storage = multer.memoryStorage(); // Store file in memory as a buffer
 const upload = multer({ storage: storage })
@@ -19,8 +19,9 @@ const userSchema = new mongoose.Schema({
     username : String ,
     email : String ,
     password : String , 
-    cartproducts : [{type : mongoose.Schema.Types.ObjectId , ref :'Shopit'}] ,
-    wishlist :  [{type : mongoose.Schema.Types.ObjectId , ref :'Shopit'}] ,
+    cartproducts : [{type : mongoose.Schema.Types.ObjectId , ref :'Product'}] ,
+    wishlist :  [{type : mongoose.Schema.Types.ObjectId , ref :'Product'}] ,
+    orderlist :  [{type : mongoose.Schema.Types.ObjectId , ref :'Product'}]
 })
 
 
@@ -117,12 +118,37 @@ const authenticateJwt = (req, res, next) => {
   });
   
   app.post('/users/login', async (req, res) => {
-    const { username, password } = req.body;
-    const user = await User.findOne({ username, password });
+    const { email , password } = req.body;
+    const user = await User.findOne({ email});
     console.log(user)
-    if (user) {
-      const token = jwt.sign({ username, role: 'user' }, SECRET, { expiresIn: '1h' });
+    if (user && user.password == password) {
+      const token = jwt.sign({ email, role: 'user' }, SECRET, { expiresIn: '1h' });
       res.json({ message: 'Logged in successfully', token ,  email : user.email });
+    } else {
+      res.status(403).json({ message: 'Invalid username or password'  });
+    }
+  });
+  
+
+  app.post('/user/cart', authenticateJwt ,async (req, res) => {
+    const { email } = req.body;
+    const user = await User.findOne({ email}).populate('cartproducts');
+   
+    if (user) {
+      console.log('hello')
+      res.json({   cartproducts : user.cartproducts });
+    } else {
+      res.status(403).json({ message: 'Invalid username or password'  });
+    }
+  });
+
+  app.post('/user/orderplaced', authenticateJwt ,async (req, res) => {
+    const { email } = req.body;
+    const user = await User.findOne({ email}).populate('orderlist');
+    
+    if (user) {
+      console.log('hello')
+      res.json({   orderlist : user.orderlist });
     } else {
       res.status(403).json({ message: 'Invalid username or password'  });
     }
@@ -171,9 +197,10 @@ app.get('/api/products', async (req, res) => {
 });
 
 //api to retrieve product based on category
-app.get('/api/products/:category', async (req, res) => {
+app.get('/api/products/category/:category', async (req, res) => {
   try {
     const { category } = req.params;
+    console.log(category)
     const products = await Product.find({ category });
     res.status(200).json(products);
   } catch (error) {
@@ -186,6 +213,7 @@ app.get('/api/products/:category', async (req, res) => {
 app.get('/api/products/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    console.log(id)
     const product = await Product.findById(id);
 
     if (!product) {
@@ -284,6 +312,80 @@ app.get('/api/recentProducts', async (req, res) => {
       res.status(404).json({ message: 'Course not found' });
     }
   });
+ 
+
+  app.post('/user/addtocart' , authenticateJwt , async (req,res) => {
+    const product = await Product.findById(req.body.productId) 
+    console.log(product)
+    if(product){
+      const user = await User.findOne({email : req.body.email})
+
+      if(user) {
+        user.cartproducts.push(req.body.productId) ;
+        await user.save()
+        res.json({message: 'product added to cart successfully' })
+      }else {
+        res.status(403).json({ message: 'User not found' });
+    }
+  }else {
+    res.status(404).json({ message: 'product not found' });
+  }
+}
+  )
+
+
+
+  app.post('/user/order' , authenticateJwt , async (req,res) => { 
+    const productlist = req.body.productlist 
+     
+    
+    // const product = await Product.findById(req.body.productId) 
+   
+    
+      const user = await User.findOne({email : req.body.email})
+
+      if(user) { 
+        for (const product of productlist) {
+          
+          user.orderlist.push(product);
+          const index = user.cartproducts.indexOf(product);
+        if (index === -1) {
+            return res.status(404).json({ message: 'Product not found in cart' });
+        }
+        user.cartproducts.splice(index, 1);
+          await user.save();
+      }
+
+        
+        res.json({message: 'product ordered to cart successfully' })
+      }else {
+        res.status(403).json({ message: 'User not found' });
+    }
+ 
+}
+  )
+
+
+  app.post('/user/removefromcart', authenticateJwt, async (req, res) => {
+    try {
+        const { email, productId } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(403).json({ message: 'User not found' });
+        }
+        const index = user.cartproducts.indexOf(productId);
+        if (index === -1) {
+            return res.status(404).json({ message: 'Product not found in cart' });
+        }
+        user.cartproducts.splice(index, 1);
+        await user.save();
+        return res.json({ message: 'Product removed successfully from cart' });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: 'Internal Server Error' });
+    }
+});
 
 
 
